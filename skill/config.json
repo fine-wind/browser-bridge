@@ -1,0 +1,6 @@
+{
+  "name": "🦐 Search Bridge",
+  "description": "通过真实浏览器搜索并返回结构化结果",
+  "version": "1.0.0",
+  "serverUrl": "http://localhost:19877"
+}

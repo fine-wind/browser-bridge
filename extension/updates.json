@@ -1,0 +1,13 @@
+{
+  "addons": {
+    "search-bridge@shrimp.dev": {
+      "updates": [
+        {
+          "version": "1.1.0",
+          "update_link": "https://YOUR_SERVER/releases/browser-bridge-1.1.0.xpi",
+          "update_hash": "sha256:e7f3a03e755f544f567b1c7db34e8a5e9b73071e12982da1226ae2f229917ae6"
+        }
+      ]
+    }
+  }
+}

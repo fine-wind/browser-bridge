@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width">
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <span class="logo">🦐</span>
+      <h1>Search Bridge</h1>
+      <span class="status" id="status-dot">●</span>
+    </div>
+
+    <div class="info">
+      <p>连接状态: <span id="status-text">未连接</span></p>
+      <p>后端: <code id="ws-url">ws://localhost:19876</code></p>
+    </div>
+
+    <div class="actions">
+      <button id="btn-reconnect">重新连接</button>
+    </div>
+
+    <div class="footer">
+      <small>提供 AI Agent 搜索能力</small>
+    </div>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>

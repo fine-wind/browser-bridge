@@ -1,0 +1,14 @@
+{
+  "name": "@shrimp/search-bridge-server",
+  "version": "1.0.0",
+  "description": "🦐 Search Bridge - 后端服务",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}
