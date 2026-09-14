@@ -40,7 +40,7 @@
     "ws://localhost:19876/*"
   ],
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' ws://localhost:19876"
+    "extension_pages": "script-src 'self' 'unsafe-eval'; object-src 'self'; connect-src 'self' ws://localhost:19876"
   },
   "browser_specific_settings": {
     "gecko": {

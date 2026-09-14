@@ -5,7 +5,7 @@
 import http from "http";
 import { URL } from "url";
 import { config } from "./config.js";
-import crypto from "crypto";
+import { executeAction, getAction } from "./actions/index.js";
 
 export class BridgeAPI {
   constructor(bridgeWS) {
@@ -50,73 +50,20 @@ export class BridgeAPI {
       if (segments[0] === "api") {
         const action = segments[1];
 
-        switch (action) {
-          case "list_tabs":
-            json(200, await this.bridgeWS.sendTask("list_tabs", body));
-            break;
-
-          case "open_url":
-            json(200, await this.bridgeWS.sendTask("open_url", body));
-            break;
-
-          case "scan_tabs":
-            json(200, await this.bridgeWS.sendTask("scan_tabs", body));
-            break;
-
-          case "status":
-            json(200, {
-              connected: this.bridgeWS.extension !== null,
-              pendingTasks: this.bridgeWS.pendingTasks.size,
-            });
-            break;
-
-          case "search":
-            json(200, await this.bridgeWS.sendTask("search", body));
-            break;
-
-          case "open_pages":
-            json(200, await this.bridgeWS.sendTask("open_pages", body));
-            break;
-
-          case "get_page_content":
-            json(200, await this.bridgeWS.sendTask("get_page_content", body));
-            break;
-
-          case "click":
-            json(200, await this.bridgeWS.sendTask("click_element", body));
-            break;
-
-          case "type":
-            json(200, await this.bridgeWS.sendTask("type_text", body));
-            break;
-
-          case "extract":
-            json(200, await this.bridgeWS.sendTask("extract_data", body));
-            break;
-
-          case "scroll":
-            json(200, await this.bridgeWS.sendTask("scroll_page", body));
-            break;
-
-          case "eval":
-            json(200, await this.bridgeWS.sendTask("execute_script", body));
-            break;
-
-          case "close_tab":
-            json(200, await this.bridgeWS.sendTask("close_tab", body));
-            break;
-
-          case "close_all":
-            json(200, await this.bridgeWS.sendTask("close_all_tabs", body));
-            break;
-
-          // 高级：批量操作 — 一次性执行多个动作
-          case "batch":
-            json(200, await this._handleBatch(body));
-            break;
-
-          default:
+        // 使用统一动作注册表
+        if (action === "status") {
+          json(200, {
+            connected: this.bridgeWS.extension !== null,
+            pendingTasks: this.bridgeWS.pendingTasks.size,
+          });
+        } else {
+          const actionInfo = getAction(action);
+          if (!actionInfo) {
             json(404, { error: `未知动作: ${action}` });
+            return;
+          }
+          const result = await executeAction(action, body, this.bridgeWS);
+          json(200, { result });
         }
       } else {
         json(404, { error: "Not Found" });

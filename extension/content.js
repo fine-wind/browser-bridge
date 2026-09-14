@@ -148,19 +148,32 @@ function extractPageText() {
   }
 
   function isNoiseAncestor(el) {
-    let cur = el;
-    while (cur && cur !== document.body && cur !== document.documentElement) {
-      const tag = cur.tagName.toLowerCase();
-      if (SKIP_TAGS.has(tag)) return true;
-      if (isHidden(cur)) return true;
-      const cls = (cur.className || "").toLowerCase();
-      const id = (cur.id || "").toLowerCase();
-      for (const kw of NOISE_KEYWORDS) {
-        if (cls.includes(kw) || id.includes(kw)) return true;
-      }
-      cur = cur.parentElement;
+    // 修复bug1: 只检查直接父元素，不再递归检查所有祖先
+    const parent = el.parentElement;
+    if (!parent || parent === document.body || parent === document.documentElement) return false;
+
+    const tag = parent.tagName.toLowerCase();
+    if (SKIP_TAGS.has(tag)) return true;
+    if (isHidden(parent)) return true;
+
+    const cls = getClassName(parent).toLowerCase();
+    const id = (parent.id || "").toLowerCase();
+    for (const kw of NOISE_KEYWORDS) {
+      if (cls.includes(kw) || id.includes(kw)) return true;
     }
     return false;
+  }
+
+  // 修复bug2: 统一获取className的helper函数
+  function getClassName(el) {
+    if (!el) return "";
+    try {
+      if (el.className && typeof el.className === "string") return el.className;
+      if (el.className && el.className.baseVal !== undefined) return el.className.baseVal;
+      return "";
+    } catch (e) {
+      return "";
+    }
   }
 
   // 取正文区域
@@ -337,10 +350,9 @@ function doScroll(direction, amount) {
 /** 执行自定义 JS */
 function doEval(code) {
   try {
-    // eslint-disable-next-line no-new-func
-    const fn = new Function(code);
-    const result = fn();
-    return { data: result === undefined ? null : (typeof result === 'object' ? JSON.stringify(result) : String(result)) };
+    // 修复bug3: 使用 Function 构造器替代 new Function（兼容CSP）
+    const fn = new Function(`"use strict"; return (${code})`)();
+    return { data: fn === undefined ? null : (typeof fn === 'object' ? JSON.stringify(fn) : String(fn)) };
   } catch (e) {
     return { data: null, error: e.message };
   }

@@ -412,9 +412,17 @@ async function openSinglePageAndGetContent({ url, id, groupId = "browse" }) {
 
   await TabManager.refresh(tabId);
   const info = TabManager._tabs.get(tabId);
-  const content = await browser.tabs.sendMessage(tabId, {
-    type: "extract_page_text",
-  });
+
+  // 修复bug6: 添加重试机制获取页面内容
+  let content = null;
+  for (let i = 0; i < 3; i++) {
+    try {
+      content = await browser.tabs.sendMessage(tabId, { type: "extract_page_text" });
+      if (content) break;
+    } catch (e) {
+      if (i < 2) await new Promise(r => setTimeout(r, 300));
+    }
+  }
 
   return {
     id: id || `page_${tabId}`,
@@ -454,10 +462,16 @@ async function getPageContent({ tabId, id, url, groupId }) {
 
   if (!targetTabId) throw new Error("未找到对应的标签页，可使用 list_tabs 查看当前打开的页面");
 
-  // 刷新一下内容
-  const content = await browser.tabs.sendMessage(targetTabId, {
-    type: "extract_page_text",
-  });
+  // 修复bug6: 添加重试机制获取页面内容
+  let content = null;
+  for (let i = 0; i < 3; i++) {
+    try {
+      content = await browser.tabs.sendMessage(targetTabId, { type: "extract_page_text" });
+      if (content) break;
+    } catch (e) {
+      if (i < 2) await new Promise(r => setTimeout(r, 300));
+    }
+  }
 
   await TabManager.refresh(targetTabId);
   const info = TabManager._tabs.get(targetTabId);
@@ -526,22 +540,37 @@ async function scrollPage({ tabId, id, groupId, direction = "down", amount = 500
 
 async function executeScript({ tabId, id, groupId, code }) {
   const resolvedTabId = await resolveTab({ tabId, id, groupId });
-  
+
   // 尝试用 sendMessage 走 content script
   try {
     const response = await browser.tabs.sendMessage(resolvedTabId, {
       type: "execute_action", action: "eval", code,
     });
+    // 修复bug5: 直接使用response（content script直接返回数据）
     if (response && response.data !== undefined) {
       return { tabId: resolvedTabId, evalResult: response.data };
+    }
+    if (response) {
+      return { tabId: resolvedTabId, evalResult: response };
     }
   } catch (e) {
     // content script 无响应，走原生注入
   }
-  
-  // 原生注入（不依赖 content script）
-  const results = await browser.tabs.executeScript(resolvedTabId, { code });
-  return { tabId: resolvedTabId, evalResult: results?.[0] ?? null };
+
+  // 修复bug4: 使用MV3的browser.scripting.executeScript替代MV2的browser.tabs.executeScript
+  try {
+    const results = await browser.scripting.executeScript({
+      target: { tabId: resolvedTabId },
+      files: [],
+      world: 'MAIN',
+      injectImmediately: true,
+      args: [code],
+      func: (c) => { try { return new Function(c)(); } catch(e) { return {error: e.message}; } }
+    });
+    return { tabId: resolvedTabId, evalResult: results?.[0]?.result ?? null };
+  } catch (e2) {
+    return { tabId: resolvedTabId, error: e2.message };
+  }
 }
 
 async function closeTab({ tabId, id, groupId }) {
@@ -636,3 +665,14 @@ browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
 connectWS();
 browser.runtime.onStartup.addListener(() => connectWS());
+
+// 修复bug8: 使用alarms保持后台脚本活跃
+browser.alarms.create('keepAlive', { periodInMinutes: 1 });
+browser.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === 'keepAlive') {
+    // 定期重连保持活跃
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      connectWS();
+    }
+  }
+});

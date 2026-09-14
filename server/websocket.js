@@ -34,7 +34,10 @@ export class BridgeWS extends EventEmitter {
 
       ws.on("close", () => {
         console.log("🔌 Firefox 插件已断开");
-        this.extension = null;
+        // 修复bug7: 只在当前连接断开时才清空
+        if (ws === this.extension) {
+          this.extension = null;
+        }
         // 拒绝所有待处理任务
         for (const [id, task] of this.pendingTasks) {
           clearTimeout(task.timer);

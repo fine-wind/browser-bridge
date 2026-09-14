@@ -1,14 +1,18 @@
 {
   "name": "@shrimp/search-bridge-server",
-  "version": "1.0.0",
-  "description": "🦐 Search Bridge - 后端服务",
+  "version": "2.0.0",
+  "description": "🦐 Search Bridge - 统一后端服务 (HTTP + WS + MCP)",
   "main": "index.js",
   "type": "module",
   "scripts": {
     "start": "node index.js",
-    "dev": "node --watch index.js"
+    "dev": "node --watch index.js",
+    "mcp": "node mcp.js"
   },
   "dependencies": {
-    "ws": "^8.18.0"
+    "ws": "^8.18.0",
+    "chrome-remote-interface": "^0.33.3",
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "zod": "^4.4.3"
   }
 }
