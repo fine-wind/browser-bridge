@@ -3,8 +3,8 @@
 # 用法: bash tests/smoke.sh
 set -e
 
-SERVER_PORT=19877
-WS_PORT=19876
+SERVER_PORT=${HTTP_PORT:-19879}
+WS_PORT=${WS_PORT:-19878}
 PASS=0
 FAIL=0
 
@@ -124,7 +124,7 @@ echo "[8] 测试假扩展客户端 (Node WebSocket模拟)..."
 SIM_TEST=$(mktemp)
 cat > "$SIM_TEST" << 'EOF'
 const WebSocket = require('ws');
-const ws = new WebSocket('ws://localhost:19876');
+const ws = new WebSocket(`ws://localhost:${process.env.WS_PORT || '19878'}`);
 ws.on('open', () => {
   console.log('WS connected');
   ws.send(JSON.stringify({ type: 'connected' }));
@@ -149,7 +149,7 @@ setTimeout(() => {
 }, 5000);
 EOF
 
-SIM_RESULT=$(cd /d/workspaces/browser-bridge/server && node "$SIM_TEST" 2>/dev/null)
+SIM_RESULT=$(cd /d/workspaces/browser-bridge/server && WS_PORT=$WS_PORT node "$SIM_TEST" 2>/dev/null)
 if echo "$SIM_RESULT" | grep -q "OK_TASK_RESULT"; then
   log_pass "假扩展客户端通信正常"
 else
