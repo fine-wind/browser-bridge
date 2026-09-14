@@ -182,6 +182,14 @@ browser.tabs.onUpdated.addListener((tabId, changeInfo) => {
   }
 });
 
+// 自愈：Firefox 会把 MV3 后台脚本挂起，造成 WS 变僵尸（服务端 connected:false）。
+// 任何用户浏览动作都顺手补一次连接，这样正常用浏览器时它自己就恢复了。
+function ensureConnected() {
+  if (!ws || ws.readyState !== WebSocket.OPEN) connectWS();
+}
+browser.tabs.onActivated.addListener(() => ensureConnected());
+browser.windows.onFocusChanged.addListener(() => ensureConnected());
+
 // ============================================================
 // 任务调度
 // ============================================================
@@ -647,6 +655,8 @@ function scheduleReconnect() {
 browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   switch (msg.type) {
     case "get_status":
+      // 打开弹窗时顺手补一次连接（后台脚本可能被挂起，socket 变僵尸）
+      if (!ws || ws.readyState !== WebSocket.OPEN) connectWS();
       sendResponse({
         connected: ws?.readyState === WebSocket.OPEN,
         tabs: TabManager.getStatus(),

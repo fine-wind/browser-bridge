@@ -62,7 +62,7 @@ browser-bridge/
 
 1. `content.js` extract_page_text 返回空：`isNoiseAncestor` 里任一祖先 display:none/visibility:hidden 就整段丢弃，现代站点（Bing 等）会全军覆没 → 改为只对直接父元素判隐藏（用 `getClientRects().length === 0`），其余层级只用噪音关键词过滤。
 2. `content.js` 对 SVG 元素 `className.toLowerCase()` 崩溃（SVGAnimatedString 是对象）→ 统一走 `getClassName()` helper（字符串 / `.baseVal` / 空串）。
-3. `content.js` doEval 恒 null：扩展 manifest CSP 禁 `new Function` → 给 `content_security_policy.extension_pages` 的 script-src 加 `'unsafe-eval'`；或改用 `browser.scripting.executeScript({world:'MAIN'})`。
+3. `content.js` doEval 恒 null：内容脚本里的 `new Function` 被扩展自身 CSP 拦掉 → **不能给 `extension_pages` 的 script-src 加 `'unsafe-eval'`，Firefox 会直接拒绝该指令并报 "script-src 指令包含不允许的 'unsafe-eval' 关键字"**。正确解法：eval 改走 `browser.scripting.executeScript({target:{tabId}, world:'MAIN', args:[code], func})`，在页面主世界里执行（受页面自身 CSP 约束，与扩展无关）。
 4. `background.js` executeScript 兜底用 MV2 的 `browser.tabs.executeScript`（MV3 已删除）→ 改用 `browser.scripting.executeScript`。
 5. `background.js` extractData 读 `result.data`，content 直接返回数据本身 → 字段不匹配，永远返回 `{}` → 统一响应结构 `{ data }`。
 6. 新建标签后立刻 sendMessage 会 "Receiving end does not exist" → 加 3 次 ×300ms 重试（内容脚本未注入时）。
