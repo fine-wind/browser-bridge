@@ -148,18 +148,16 @@ function extractPageText() {
   }
 
   function isNoiseAncestor(el) {
-    // 修复bug1: 只检查直接父元素，不再递归检查所有祖先
-    const parent = el.parentElement;
-    if (!parent || parent === document.body || parent === document.documentElement) return false;
-
-    const tag = parent.tagName.toLowerCase();
-    if (SKIP_TAGS.has(tag)) return true;
-    if (isHidden(parent)) return true;
-
-    const cls = getClassName(parent).toLowerCase();
-    const id = (parent.id || "").toLowerCase();
-    for (const kw of NOISE_KEYWORDS) {
-      if (cls.includes(kw) || id.includes(kw)) return true;
+    // 只按关键词判噪音；不要递归判 display:none/visibility:hidden
+    // （很多站点顶层容器初始是隐藏的，整页会被判空——这是历史 bug）
+    let cur = el.parentElement;
+    while (cur && cur !== document.body && cur !== document.documentElement) {
+      const cls = getClassName(cur).toLowerCase();
+      const id = ((typeof cur.id === "string" ? cur.id : "")).toLowerCase();
+      for (const kw of NOISE_KEYWORDS) {
+        if (cls.includes(kw) || id.includes(kw)) return true;
+      }
+      cur = cur.parentElement;
     }
     return false;
   }
@@ -195,6 +193,9 @@ function extractPageText() {
       acceptNode: (node) => {
         const el = node.parentElement;
         if (!el) return NodeFilter.FILTER_REJECT;
+        // 元素自身：script/style/svg 等一律跳过，否则内联脚本会被当成正文
+        if (SKIP_TAGS.has(el.tagName.toLowerCase())) return NodeFilter.FILTER_REJECT;
+        if (isHidden(el)) return NodeFilter.FILTER_REJECT;
         if (isNoiseAncestor(el)) return NodeFilter.FILTER_REJECT;
         return NodeFilter.FILTER_ACCEPT;
       },
@@ -206,7 +207,9 @@ function extractPageText() {
   let lastParent = null;
 
   while (walker.nextNode()) {
-    const raw = walker.nodeValue || "";
+    // 注意：TreeWalker 没有 nodeValue 属性，必须用 currentNode.nodeValue。
+    // 老代码写 walker.nodeValue（永远是 undefined），导致正文永远提取为空。
+    const raw = walker.currentNode.nodeValue || "";
     const text = raw.replace(/\s+/g, " ").trim();
     if (!text) continue;
 
@@ -264,7 +267,8 @@ async function handleAction(msg, sendResponse) {
         result = doType(selector, text, selectorType);
         break;
       case "extract":
-        result = doExtract(rules);
+        // 统一响应结构：background 侧读 result.data，两边必须一致
+        result = { data: doExtract(rules) };
         break;
       case "scroll":
         result = doScroll(direction, amount);

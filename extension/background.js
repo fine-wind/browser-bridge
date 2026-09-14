@@ -413,15 +413,17 @@ async function openSinglePageAndGetContent({ url, id, groupId = "browse" }) {
   await TabManager.refresh(tabId);
   const info = TabManager._tabs.get(tabId);
 
-  // 修复bug6: 添加重试机制获取页面内容
+  // 修复bug6: 内容脚本可能尚未注入（新建标签的竞态），必须每次等待后重试；
+  // 且响应为空时要报错，不能静默返回空字符串
   let content = null;
-  for (let i = 0; i < 3; i++) {
+  let contentError = null;
+  for (let i = 0; i < 6; i++) {
     try {
-      content = await browser.tabs.sendMessage(tabId, { type: "extract_page_text" });
-      if (content) break;
-    } catch (e) {
-      if (i < 2) await new Promise(r => setTimeout(r, 300));
-    }
+      const resp = await browser.tabs.sendMessage(tabId, { type: "extract_page_text" });
+      if (resp && typeof resp === "object" && typeof resp.text === "string") { content = resp; break; }
+      contentError = "内容脚本响应为空";
+    } catch (e) { contentError = e.message; }
+    await sleep(400);
   }
 
   return {
@@ -430,6 +432,7 @@ async function openSinglePageAndGetContent({ url, id, groupId = "browse" }) {
     title: info?.title || "",
     url: info?.url || url,
     content: content?.text || "",
+    contentError: content ? null : contentError,
     openTabs: TabManager.getStatus(),
   };
 }
@@ -462,15 +465,16 @@ async function getPageContent({ tabId, id, url, groupId }) {
 
   if (!targetTabId) throw new Error("未找到对应的标签页，可使用 list_tabs 查看当前打开的页面");
 
-  // 修复bug6: 添加重试机制获取页面内容
+  // 修复bug6: 内容脚本可能尚未注入，必须每次等待后重试；空响应要报错而不是静默返回 ""
   let content = null;
-  for (let i = 0; i < 3; i++) {
+  let contentError = null;
+  for (let i = 0; i < 6; i++) {
     try {
-      content = await browser.tabs.sendMessage(targetTabId, { type: "extract_page_text" });
-      if (content) break;
-    } catch (e) {
-      if (i < 2) await new Promise(r => setTimeout(r, 300));
-    }
+      const resp = await browser.tabs.sendMessage(targetTabId, { type: "extract_page_text" });
+      if (resp && typeof resp === "object" && typeof resp.text === "string") { content = resp; break; }
+      contentError = "内容脚本响应为空";
+    } catch (e) { contentError = e.message; }
+    await sleep(400);
   }
 
   await TabManager.refresh(targetTabId);
@@ -482,6 +486,7 @@ async function getPageContent({ tabId, id, url, groupId }) {
     title: info?.title || "",
     url: info?.url || "",
     content: content?.text || "",
+    contentError: content ? null : contentError,
     openTabs: TabManager.getStatus(),
   };
 }
@@ -527,7 +532,9 @@ async function extractData({ tabId, id, groupId, rules }) {
   const result = await browser.tabs.sendMessage(resolvedTabId, {
     type: "execute_action", action: "extract", rules,
   });
-  return { tabId: resolvedTabId, data: result?.data || {} };
+  // 兼容两种返回：content 直接给数据 / content 包在 {data} 里
+  const data = (result && result.data !== undefined) ? result.data : (result || {});
+  return { tabId: resolvedTabId, data };
 }
 
 async function scrollPage({ tabId, id, groupId, direction = "down", amount = 500 }) {
@@ -541,35 +548,29 @@ async function scrollPage({ tabId, id, groupId, direction = "down", amount = 500
 async function executeScript({ tabId, id, groupId, code }) {
   const resolvedTabId = await resolveTab({ tabId, id, groupId });
 
-  // 尝试用 sendMessage 走 content script
-  try {
-    const response = await browser.tabs.sendMessage(resolvedTabId, {
-      type: "execute_action", action: "eval", code,
-    });
-    // 修复bug5: 直接使用response（content script直接返回数据）
-    if (response && response.data !== undefined) {
-      return { tabId: resolvedTabId, evalResult: response.data };
-    }
-    if (response) {
-      return { tabId: resolvedTabId, evalResult: response };
-    }
-  } catch (e) {
-    // content script 无响应，走原生注入
-  }
-
-  // 修复bug4: 使用MV3的browser.scripting.executeScript替代MV2的browser.tabs.executeScript
+  // 修复bug3+bug4：扩展的 CSP 不允许 'unsafe-eval'（Firefox 会直接拒绝该指令），
+  // 所以 content script 里不能用 new Function 执行任意 JS。
+  // 正确做法：用 MV3 的 scripting.executeScript 注入页面主世界（world: MAIN），
+  // 在那里 eval 的是页面自己的 CSP，跟扩展无关。
   try {
     const results = await browser.scripting.executeScript({
       target: { tabId: resolvedTabId },
-      files: [],
       world: 'MAIN',
-      injectImmediately: true,
       args: [code],
-      func: (c) => { try { return new Function(c)(); } catch(e) { return {error: e.message}; } }
+      func: (c) => {
+        try {
+          const v = new Function('"use strict"; return (' + c + ');')();
+          return v === undefined ? null : (typeof v === 'object' ? JSON.stringify(v) : String(v));
+        } catch (e) {
+          return { error: e.message };
+        }
+      },
     });
-    return { tabId: resolvedTabId, evalResult: results?.[0]?.result ?? null };
-  } catch (e2) {
-    return { tabId: resolvedTabId, error: e2.message };
+    const first = results && results[0];
+    if (first && first.error) return { tabId: resolvedTabId, error: first.error.message };
+    return { tabId: resolvedTabId, evalResult: first ? first.result : null };
+  } catch (e) {
+    return { tabId: resolvedTabId, error: '脚本注入失败: ' + e.message };
   }
 }
 
@@ -666,13 +667,22 @@ browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 connectWS();
 browser.runtime.onStartup.addListener(() => connectWS());
 
-// 修复bug8: 使用alarms保持后台脚本活跃
-browser.alarms.create('keepAlive', { periodInMinutes: 1 });
-browser.alarms.onAlarm.addListener((alarm) => {
-  if (alarm.name === 'keepAlive') {
-    // 定期重连保持活跃
-    if (!ws || ws.readyState !== WebSocket.OPEN) {
-      connectWS();
-    }
+// 修复bug8: 使用alarms保持后台脚本活跃（整个块必须容错：缺 alarms 权限或 API 不可用时
+// 不能抛异常，否则后台脚本在启动阶段就挂掉，WS 连不上）
+try {
+  if (browser.alarms && browser.alarms.create) {
+    browser.alarms.create('keepAlive', { periodInMinutes: 1 });
+    browser.alarms.onAlarm.addListener((alarm) => {
+      if (alarm.name === 'keepAlive') {
+        // 定期重连保持活跃
+        if (!ws || ws.readyState !== WebSocket.OPEN) {
+          connectWS();
+        }
+      }
+    });
+  } else {
+    console.warn('alarms API 不可用，跳过 keep-alive');
   }
-});
+} catch (e) {
+  console.warn('keep-alive 初始化失败:', e && e.message);
+}

@@ -53,7 +53,8 @@ export async function executeAction(action, payload, bridgeWS = null) {
     if (!bridgeWS) {
       throw new Error('Firefox插件未连接');
     }
-    return await bridgeWS.sendTask(action, payload);
+    // 用扩展认识的动作名（eval→execute_script 等），不要直接把 HTTP 动作名发过去
+    return await bridgeWS.sendTask(actionInfo.extensionAction || action, payload);
   }
 
   // CDP和DeepSeek通道直接执行

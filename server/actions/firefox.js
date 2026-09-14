@@ -3,6 +3,9 @@
 // ============================================================
 
 // Firefox通道动作通过websocket发送，这里只定义schema供MCP使用
+// 注意 extensionAction：HTTP/MCP 侧的动作名（eval/extract/click/type/scroll）与扩展
+// 侧的动作名（execute_script/extract_data/click_element/type_text/scroll_page）不一致，
+// 发 WS 任务时必须用扩展认识的名字，否则扩展回 "未知任务: xxx"。
 export const firefoxActions = {
   search: {
     schema: { query: 'string', engine: 'string', count: 'number' },
@@ -25,22 +28,27 @@ export const firefoxActions = {
     description: '获取页面内容：提取页面正文文本'
   },
   click: {
+    extensionAction: 'click_element',
     schema: { tabId: 'number', id: 'string', groupId: 'string', selector: 'string', selectorType: 'string' },
     description: '点击：点击页面元素'
   },
   type: {
+    extensionAction: 'type_text',
     schema: { tabId: 'number', id: 'string', groupId: 'string', selector: 'string', text: 'string', selectorType: 'string' },
     description: '输入：在输入框中输入文本'
   },
   extract: {
+    extensionAction: 'extract_data',
     schema: { tabId: 'number', id: 'string', groupId: 'string', rules: 'array' },
     description: '提取：根据规则提取页面数据'
   },
   eval: {
+    extensionAction: 'execute_script',
     schema: { tabId: 'number', id: 'string', groupId: 'string', code: 'string' },
     description: '执行脚本：执行自定义JavaScript'
   },
   scroll: {
+    extensionAction: 'scroll_page',
     schema: { tabId: 'number', id: 'string', groupId: 'string', direction: 'string', amount: 'number' },
     description: '滚动：滚动页面'
   },
@@ -49,6 +57,7 @@ export const firefoxActions = {
     description: '关闭标签页：关闭指定标签页'
   },
   close_all: {
+    extensionAction: 'close_all_tabs',
     schema: {},
     description: '关闭所有：关闭所有管理的标签页'
   },

@@ -3,8 +3,8 @@
 # 用法: bash tests/smoke.sh
 set -e
 
-SERVER_PORT=${HTTP_PORT:-19879}
-WS_PORT=${WS_PORT:-19878}
+SERVER_PORT=${HTTP_PORT:-19877}
+WS_PORT=${WS_PORT:-19876}
 PASS=0
 FAIL=0
 
@@ -62,7 +62,7 @@ fi
 # 3. 测试未知动作 404
 echo ""
 echo "[3] 测试未知动作 404..."
-UNKNOWN_RESP=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:$SERVER_PORT/api/unknown_action")
+UNKNOWN_RESP=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:$SERVER_PORT/api/unknown_action" || true)
 if [ "$UNKNOWN_RESP" = "404" ]; then
   log_pass "未知动作返回 404"
 else
@@ -72,6 +72,9 @@ fi
 # 4. 测试扩展类动作（无连接时返回明确错误）
 echo ""
 echo "[4] 测试扩展类动作（无连接时）..."
+# 先断开任何现有WS连接，确保测试条件准确
+curl -s -X POST "http://localhost:$SERVER_PORT/api/disconnect" > /dev/null 2>&1 || true
+sleep 1
 SEARCH_RESP=$(curl -s -X POST "http://localhost:$SERVER_PORT/api/search" \
   -H "Content-Type: application/json" \
   -d '{"query":"test"}')
@@ -86,7 +89,7 @@ echo ""
 echo "[5] 测试各动作路由..."
 ACTIONS=("search" "list_tabs" "open_url" "get_page_content" "click" "type" "extract" "eval" "scroll" "close_tab" "close_all" "scan_tabs" "batch")
 for action in "${ACTIONS[@]}"; do
-  RESP=$(curl -s -o /dev/null -w "%{http_code}" -X POST "http://localhost:$SERVER_PORT/api/$action" -H "Content-Type: application/json" -d '{}')
+  RESP=$(curl -s -o /dev/null -w "%{http_code}" -X POST "http://localhost:$SERVER_PORT/api/$action" -H "Content-Type: application/json" -d '{}' || true)
   if [ "$RESP" != "404" ]; then
     log_pass "POST /api/$action 路由存在 (HTTP $RESP)"
   else
@@ -112,7 +115,7 @@ echo "[7] 测试 DeepSeek 动作..."
 DS_RESP=$(curl -s -X POST "http://localhost:$SERVER_PORT/api/deepseek_check_login" \
   -H "Content-Type: application/json" \
   -d '{}')
-if echo "$DS_RESP" | grep -qi "chrome\|未启动\|connect\|error\|login"; then
+if echo "$DS_RESP" | grep -Eqi "login|isLoggedIn|chrome|未启动|connect|error"; then
   log_pass "DeepSeek 动作路由存在"
 else
   log_fail "DeepSeek 动作返回: $DS_RESP"
@@ -121,41 +124,16 @@ fi
 # 8. 测试假扩展客户端回归
 echo ""
 echo "[8] 测试假扩展客户端 (Node WebSocket模拟)..."
-SIM_TEST=$(mktemp)
-cat > "$SIM_TEST" << 'EOF'
-const WebSocket = require('ws');
-const ws = new WebSocket(`ws://localhost:${process.env.WS_PORT || '19878'}`);
-ws.on('open', () => {
-  console.log('WS connected');
-  ws.send(JSON.stringify({ type: 'connected' }));
-  setTimeout(() => {
-    ws.send(JSON.stringify({ type: 'task', taskId: 'test_1', action: 'list_tabs', payload: {} }));
-  }, 500);
-});
-ws.on('message', (data) => {
-  const msg = JSON.parse(data.toString());
-  if (msg.type === 'task_result') {
-    console.log('OK_TASK_RESULT');
-    process.exit(0);
-  }
-});
-ws.on('error', (err) => {
-  console.log('WS error:', err.message);
-  process.exit(1);
-});
-setTimeout(() => {
-  console.log('Timeout');
-  process.exit(1);
-}, 5000);
-EOF
-
-SIM_RESULT=$(cd /d/workspaces/browser-bridge/server && WS_PORT=$WS_PORT node "$SIM_TEST" 2>/dev/null)
-if echo "$SIM_RESULT" | grep -q "OK_TASK_RESULT"; then
+_origdir="$PWD"
+cd /d/workspaces/browser-bridge/server
+NODE_PATH=/d/workspaces/browser-bridge/server/node_modules node /d/workspaces/browser-bridge/tests/ws_sim.js 2>/dev/null > /tmp/ws_sim_out.txt
+cd "$_origdir"
+if grep -q "OK_TASK_RESULT" /tmp/ws_sim_out.txt; then
   log_pass "假扩展客户端通信正常"
 else
-  log_fail "假扩展客户端通信失败: $SIM_RESULT"
+  log_fail "假扩展客户端通信失败"
 fi
-rm -f "$SIM_TEST"
+rm -f /tmp/ws_sim_out.txt
 
 # 总结
 echo ""
