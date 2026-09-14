@@ -5,11 +5,30 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
-import { listActions, executeAction } from './actions/index.js';
-import { BridgeWS } from './websocket.js';
+import { listActions } from './actions/index.js';
 
-const bridgeWS = new BridgeWS();
-bridgeWS.start();
+// 说明：MCP 门面不再自己开 WebSocket（会和 server/index.js 抢 19876 端口，
+// 且扩展只会连其中一个，导致 MCP 调用报"Firefox 插件未连接"）。
+// 所有动作统一转发给常驻的 HTTP API（server/index.js）。
+const API_BASE = process.env.BRIDGE_HTTP || 'http://localhost:19876';
+
+async function callBridgeHTTP(action, args) {
+  let res;
+  try {
+    res = await fetch(`${API_BASE}/api/${action}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(args || {}),
+    });
+  } catch (e) {
+    throw new Error(`连不上浏览器桥服务 ${API_BASE}（先在 server/ 下跑 node index.js）：${e.message}`);
+  }
+  let data;
+  try { data = await res.json(); } catch (e) { throw new Error(`桥返回非 JSON（HTTP ${res.status}）`); }
+  if (data && data.error) throw new Error(data.error);
+  if (data && data.type === 'task_result') return data.result;
+  return data;
+}
 
 async function main() {
   const mcpServer = new McpServer({
@@ -172,7 +191,7 @@ async function main() {
       { description: action.description || `${action.channel}通道: ${action.name}`, inputSchema: z.object(schema) },
       async (args) => {
         try {
-          const result = await executeAction(action.name, args, bridgeWS);
+          const result = await callBridgeHTTP(action.name, args);
           return {
             content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
           };
@@ -189,8 +208,7 @@ async function main() {
   const transport = new StdioServerTransport();
   await mcpServer.connect(transport);
   console.error('Browser Bridge MCP Server (stdio) ready.');
-  console.error(`HTTP API: http://localhost:19877`);
-  console.error(`WebSocket: ws://localhost:19876`);
+  console.error(`转发到 HTTP API: ${API_BASE}（需要先起 server/index.js）`);
   console.error(`Tools registered: ${actions.length}`);
 }
 
