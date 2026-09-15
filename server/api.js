@@ -6,6 +6,7 @@ import http from "http";
 import { URL } from "url";
 import { config } from "./config.js";
 import { executeAction, getAction } from "./actions/index.js";
+import { serverOnlyActions } from "./actions/firefox.js";
 
 export class BridgeAPI {
   constructor(bridgeWS) {
@@ -56,10 +57,25 @@ export class BridgeAPI {
             connected: this.bridgeWS.extension !== null,
             pendingTasks: this.bridgeWS.pendingTasks.size,
           });
+        } else if (action === "batch") {
+          // batch 是 server 侧处理，不走 websocket
+          json(200, await this._handleBatch(body));
+        } else if (action === "close_all_tabs") {
+          // close_all_tabs 需要扩展，但先返回提示
+          if (!this.bridgeWS.extension) {
+            json(503, { error: "Firefox 插件未连接，请先在 about:debugging 重新载入扩展" });
+          } else {
+            json(200, await this.bridgeWS.sendTask("close_all_tabs", body));
+          }
         } else {
           const actionInfo = getAction(action);
           if (!actionInfo) {
             json(404, { error: `未知动作: ${action}` });
+            return;
+          }
+          // server-only 动作不通过 websocket 发
+          if (serverOnlyActions.includes(action)) {
+            json(404, { error: `${action} 是 server 内部动作，请改用其他接口` });
             return;
           }
           const result = await executeAction(action, body, this.bridgeWS);

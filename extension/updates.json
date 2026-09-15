@@ -3,9 +3,9 @@
     "search-bridge@shrimp.dev": {
       "updates": [
         {
-          "version": "1.1.0",
-          "update_link": "https://YOUR_SERVER/releases/browser-bridge-1.1.0.xpi",
-          "update_hash": "sha256:e7f3a03e755f544f567b1c7db34e8a5e9b73071e12982da1226ae2f229917ae6"
+          "version": "1.2.0",
+          "update_link": "https://YOUR_SERVER/releases/browser-bridge-1.2.0.xpi",
+          "update_hash": "sha256:5b283b370345d0deb36dd7a8ec3512aaff47b59493a2a8c60f995500736a14d7"
         }
       ]
     }

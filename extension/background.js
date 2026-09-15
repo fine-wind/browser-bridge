@@ -251,6 +251,11 @@ async function handleTask(msg) {
         result = await closeAllTabs(payload);
         break;
 
+      case "close_all":
+        // alias for close_all_tabs, supports groupId filter
+        result = await closeAllTabs(payload);
+        break;
+
       case "execute_script":
         result = await executeScript(payload);
         break;
@@ -315,37 +320,42 @@ async function scanAllBrowserTabs({ groupId = "browser", filterUrl, filterTitle 
 // Action: search — 搜索（自动复用已打开页面）
 // ============================================================
 
-async function executeSearch({ query, engine = "google", count = 5 }) {
+async function executeSearch({ query, engine = "duckduckgo", count = 5 }) {
   const searchUrls = {
     google: `https://www.google.com/search?q=${encodeURIComponent(query)}&num=${count}`,
     baidu: `https://www.baidu.com/s?wd=${encodeURIComponent(query)}&rn=${count}`,
     bing: `https://www.bing.com/search?q=${encodeURIComponent(query)}&count=${count}`,
     duckduckgo: `https://duckduckgo.com/?q=${encodeURIComponent(query)}`,
+    brave: `https://search.brave.com/search?q=${encodeURIComponent(query)}`,
+    yandex: `https://yandex.com/search/?text=${encodeURIComponent(query)}&lr=0`,
+    ecosia: `https://www.ecosia.org/search?q=${encodeURIComponent(query)}`,
+    startpage: `https://www.startpage.com/sp/search?query=${encodeURIComponent(query)}&num=${count}`,
+    qwant: `https://www.qwant.com/?q=${encodeURIComponent(query)}&t=web`,
+    swisscows: `https://swisscows.com/web?q=${encodeURIComponent(query)}`,
+    mojeek: `https://www.mojeek.com/search?q=${encodeURIComponent(query)}`,
+    gigablast: `https://gigablast.com/search?q=${encodeURIComponent(query)}`,
+    kagi: `https://kagi.com/search?q=${encodeURIComponent(query)}`,
+    presearch: `https://presearch.org/search?q=${encodeURIComponent(query)}`,
+    searxng: `https://search.sapti.me/search?q=${encodeURIComponent(query)}&format=json`,
   };
 
-  const url = searchUrls[engine] || searchUrls.google;
+  const url = searchUrls[engine] || searchUrls.duckduckgo;
 
   // 检查是否有可复用的搜索标签页
   const existingTab = await findExistingTab(url, engine);
   if (existingTab) {
-    // 复用已有标签页
     await browser.tabs.update(existingTab.tabId, { url, active: false });
     await waitForTabComplete(existingTab.tabId);
-    const results = await browser.tabs.sendMessage(existingTab.tabId, {
-      type: "extract_search_results", engine, count,
-    });
+    const results = await sendMessageWithRetry(existingTab.tabId, "extract_search_results", { engine, count });
     return { engine, query, url, tabId: existingTab.tabId, cached: true, results: results || [] };
   }
 
-  // 新建标签页
   const tab = await browser.tabs.create({ url, active: false });
   TabManager.register(tab.id, { url, id: `search_${engine}_${Date.now()}`, groupId: "search" });
   await waitForTabComplete(tab.id);
   await TabManager.refresh(tab.id);
 
-  const results = await browser.tabs.sendMessage(tab.id, {
-    type: "extract_search_results", engine, count,
-  });
+  const results = await sendMessageWithRetry(tab.id, "extract_search_results", { engine, count });
 
   return { engine, query, url, tabId: tab.id, cached: false, results: results || [] };
 }
@@ -603,11 +613,15 @@ async function closeTab({ tabId, id, groupId }) {
   return { closedCount: tabIds.length, openTabs: TabManager.getStatus() };
 }
 
-async function closeAllTabs(_payload) {
-  const allTabIds = [...TabManager._tabs.keys()];
-  if (allTabIds.length > 0) await browser.tabs.remove(allTabIds);
-  TabManager.clear();
-  return { closedCount: allTabIds.length, openTabs: [] };
+async function closeAllTabs({ groupId } = {}) {
+  let tabIds = [...TabManager._tabs.keys()];
+  if (groupId) {
+    tabIds = TabManager.findByGroup(groupId).map(t => t.tabId);
+  }
+  if (tabIds.length > 0) await browser.tabs.remove(tabIds);
+  if (!groupId) TabManager.clear();
+  else TabManager.removeGroup(groupId);
+  return { closedCount: tabIds.length, openTabs: TabManager.getStatus() };
 }
 
 // ============================================================
@@ -641,6 +655,20 @@ function sendResponse(taskId, type, data) {
   if (ws && ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify({ type, taskId, ...data }));
   }
+}
+
+// 发送消息并重试（解决内容脚本注入延迟问题）
+async function sendMessageWithRetry(tabId, type, payload) {
+  for (let i = 0; i < 6; i++) {
+    try {
+      const resp = await browser.tabs.sendMessage(tabId, { type, ...payload });
+      if (resp && typeof resp === "object") return resp;
+    } catch (e) {
+      // 重试
+    }
+    await sleep(400);
+  }
+  return [];
 }
 
 function scheduleReconnect() {

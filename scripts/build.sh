@@ -5,8 +5,9 @@
 # ============================================================
 set -e
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+# 使用 cygpath 转换路径，避免 MSYS 路径转换问题
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd -W)"
+PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd -W)"
 EXT_DIR="$PROJECT_DIR/extension"
 RELEASE_DIR="$PROJECT_DIR/releases"
 MANIFEST="$EXT_DIR/manifest.json"

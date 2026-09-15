@@ -37,6 +37,17 @@ function extractSearchResults(engine, count) {
     case "baidu": return extractBaidu(count);
     case "bing": return extractBing(count);
     case "duckduckgo": return extractDDG(count);
+    case "brave": return extractBrave(count);
+    case "yandex": return extractYandex(count);
+    case "ecosia": return extractEcosia(count);
+    case "startpage": return extractStartpage(count);
+    case "qwant": return extractQwant(count);
+    case "swisscows": return extractSwisscows(count);
+    case "mojeek": return extractMojeek(count);
+    case "gigablast": return extractGeneric(count);
+    case "kagi": return extractKagi(count);
+    case "presearch": return extractPresearch(count);
+    case "searxng": return extractSearXNG(count);
     default: return extractGeneric(count);
   }
 }
@@ -73,18 +84,37 @@ function extractBaidu(count) {
 }
 
 function extractBing(count) {
-  return [...document.querySelectorAll("#b_results > li.b_algo")]
+  // Bing 搜索结果选择器（支持新版布局）
+  const selectors = [
+    '#b_results > li.b_algo',
+    'li.b_algo',
+    '.b_algo',
+    '[data-se="1"]', '[data-se="2"]', '[data-se="3"]',
+    'article.searchResult',
+    '.webResult',
+    '.b_main .b_algo',
+    'ol#b_results > li'
+  ];
+
+  let results = [];
+  for (const sel of selectors) {
+    results = [...document.querySelectorAll(sel)];
+    if (results.length > 0) break;
+  }
+
+  return results
     .slice(0, count)
     .map(item => {
-      const title = item.querySelector("h2 a");
-      const snippet = item.querySelector(".b_caption p");
+      const link = item.querySelector('h2 a, a[href^="http"]');
+      const titleEl = item.querySelector('h2 a, h2, .title a');
+      const snippetEl = item.querySelector('.b_caption p, .b_lineclamp, .b_lineclamp2, .b_caption, p, .snippet');
       return {
-        title: title?.textContent?.trim() || "",
-        url: title?.href || "",
-        snippet: snippet?.textContent?.trim() || "",
+        title: (titleEl || link)?.textContent?.trim() || '',
+        url: link?.href || '',
+        snippet: snippetEl?.textContent?.trim() || '',
       };
     })
-    .filter(r => r.title);
+    .filter(r => r.title && r.url);
 }
 
 function extractDDG(count) {
@@ -111,6 +141,174 @@ function extractGeneric(count) {
       url: a.href,
       snippet: a.parentElement?.textContent.replace(a.textContent, "").trim().slice(0, 150) || "",
     }));
+}
+
+function extractBrave(count) {
+  // Brave Search 使用 div[data-rank] 包裹每条结果
+  return [...document.querySelectorAll("div[data-rank]")]
+    .slice(0, count)
+    .map(item => {
+      const link = item.querySelector("a[href^='http'], a[href^='/url']");
+      const title = item.querySelector("h3 a, [data-component='title'], a[data-component='title']");
+      const snippet = item.querySelector("[data-component='snippet'], .snippet, p");
+      let url = link?.href || "";
+      // Brave 的 /url 开头链接需要解码
+      if (url.startsWith("/url")) {
+        try { url = new URL(url, window.location.origin).href; } catch (e) {}
+      }
+      return {
+        title: title?.textContent?.trim() || link?.textContent?.trim() || "",
+        url,
+        snippet: snippet?.textContent?.trim() || "",
+      };
+    })
+    .filter(r => r.title && r.url);
+}
+
+function extractYandex(count) {
+  return [...document.querySelectorAll("li[data-morphid], .search-item__content, .organic-item")]
+    .slice(0, count)
+    .map(item => {
+      const link = item.querySelector("a[href^='http']");
+      const title = item.querySelector("h2 a, .organic-item__title a, .link");
+      const snippet = item.querySelector(".snippet, .text, .snippet__text");
+      return {
+        title: (title || link)?.textContent?.trim() || "",
+        url: link?.href || "",
+        snippet: snippet?.textContent?.trim() || "",
+      };
+    })
+    .filter(r => r.title && r.url);
+}
+
+function extractEcosia(count) {
+  return [...document.querySelectorAll("div.result, li.result")]
+    .slice(0, count)
+    .map(item => {
+      const link = item.querySelector("a[href^='http']");
+      const title = item.querySelector("h3 a, .result__title a");
+      const snippet = item.querySelector(".result__snippet, p");
+      return {
+        title: (title || link)?.textContent?.trim() || "",
+        url: link?.href || "",
+        snippet: snippet?.textContent?.trim() || "",
+      };
+    })
+    .filter(r => r.title && r.url);
+}
+
+function extractStartpage(count) {
+  return [...document.querySelectorAll("div.web-result, article.web-result, .w-gl__result")]
+    .slice(0, count)
+    .map(item => {
+      const link = item.querySelector("a[href^='http']");
+      const title = item.querySelector("h3 a, .title, a[class*='title']");
+      const snippet = item.querySelector(".r, .snippet, p[class*='snippet']");
+      return {
+        title: (title || link)?.textContent?.trim() || "",
+        url: link?.href || "",
+        snippet: snippet?.textContent?.trim() || "",
+      };
+    })
+    .filter(r => r.title && r.url);
+}
+
+function extractQwant(count) {
+  return [...document.querySelectorAll("article.result, .result")]
+    .slice(0, count)
+    .map(item => {
+      const link = item.querySelector("a[href^='http']");
+      const title = item.querySelector("h2 a, .result-title, .title");
+      const snippet = item.querySelector(".result-body, .snippet, p");
+      return {
+        title: (title || link)?.textContent?.trim() || "",
+        url: link?.href || "",
+        snippet: snippet?.textContent?.trim() || "",
+      };
+    })
+    .filter(r => r.title && r.url);
+}
+
+function extractSwisscows(count) {
+  return [...document.querySelectorAll("article.result, .result-row")]
+    .slice(0, count)
+    .map(item => {
+      const link = item.querySelector("a[href^='http']");
+      const title = item.querySelector("h2 a, .title, a[data-type='url']");
+      const snippet = item.querySelector(".text, .snippet, p");
+      return {
+        title: (title || link)?.textContent?.trim() || "",
+        url: link?.href || "",
+        snippet: snippet?.textContent?.trim() || "",
+      };
+    })
+    .filter(r => r.title && r.url);
+}
+
+function extractMojeek(count) {
+  return [...document.querySelectorAll("article.snippet, .result")]
+    .slice(0, count)
+    .map(item => {
+      const link = item.querySelector("a[href^='http']");
+      const title = item.querySelector("h3 a, .result__title a");
+      const snippet = item.querySelector(".snippet, p");
+      return {
+        title: (title || link)?.textContent?.trim() || "",
+        url: link?.href || "",
+        snippet: snippet?.textContent?.trim() || "",
+      };
+    })
+    .filter(r => r.title && r.url);
+}
+
+function extractKagi(count) {
+  return [...document.querySelectorAll("div.k-searchresult, article.search-result")]
+    .slice(0, count)
+    .map(item => {
+      const link = item.querySelector("a[href^='http']");
+      const title = item.querySelector("h3 a, .k-title, a[class*='title']");
+      const snippet = item.querySelector(".k-snippet, .snippet, p");
+      return {
+        title: (title || link)?.textContent?.trim() || "",
+        url: link?.href || "",
+        snippet: snippet?.textContent?.trim() || "",
+      };
+    })
+    .filter(r => r.title && r.url);
+}
+
+function extractPresearch(count) {
+  return [...document.querySelectorAll("div.result, article.result")]
+    .slice(0, count)
+    .map(item => {
+      const link = item.querySelector("a[href^='http']");
+      const title = item.querySelector("h3 a, .title, a[class*='title']");
+      const snippet = item.querySelector(".snippet, p");
+      return {
+        title: (title || link)?.textContent?.trim() || "",
+        url: link?.href || "",
+        snippet: snippet?.textContent?.trim() || "",
+      };
+    })
+    .filter(r => r.title && r.url);
+}
+
+function extractSearXNG(count) {
+  // SearXNG JSON API 返回格式
+  const jsonResult = document.querySelector("pre");
+  if (jsonResult) {
+    try {
+      const data = JSON.parse(jsonResult.textContent);
+      return (data.results || []).slice(0, count).map(r => ({
+        title: r.title || "",
+        url: r.url || "",
+        snippet: r.content || "",
+      }));
+    } catch (e) {
+      // fall through to generic
+    }
+  }
+  return extractGeneric(count);
 }
 
 // ============================================================

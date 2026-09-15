@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
-  "name": "代码虾 Browser Bridge",
-  "version": "1.1.0",
+  "name": "浏览器桥",
+  "version": "1.2.0",
   "description": "AI Agent 浏览器桥 — 搜索、打开页面、提取内容、点击、输入，操作真实浏览器",
   "icons": {
     "48": "icons/img.png",
@@ -9,7 +9,7 @@
     "128": "icons/img.png"
   },
   "action": {
-    "default_title": "🐚 代码虾",
+    "default_title": "浏览器桥",
     "default_popup": "popup/popup.html"
   },
   "background": {
@@ -41,31 +41,12 @@
     "ws://localhost:19876/*"
   ],
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' ws://localhost:19876"
+    "extension_pages": "default-src 'self'; script-src 'self'; connect-src 'self' ws://localhost:19876"
   },
   "browser_specific_settings": {
     "gecko": {
       "id": "search-bridge@shrimp.dev",
-      "strict_min_version": "109.0",
-      "update_url": "https://xpi.1113664.xyz/browser_specific/updates.json",
-      "data_collection_permissions": {
-        "required": [
-          "personallyIdentifyingInfo",
-          "healthInfo",
-          "financialAndPaymentInfo",
-          "authenticationInfo",
-          "personalCommunications",
-          "locationInfo",
-          "browsingActivity",
-          "websiteContent",
-          "websiteActivity",
-          "searchTerms",
-          "bookmarksInfo"
-        ],
-        "optional": [
-          "technicalAndInteraction"
-        ]
-      }
+      "strict_min_version": "109.0"
     }
   }
 }
